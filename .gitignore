@@ -1,0 +1,39 @@
+# ---- environment (per-machine, never committed) ----
+.pixi
+utils/defaults_local.py
+CCCollisions/
+cuda-samples/
+
+# ---- data, models and motion capture: fetched per INSTALL.md, never committed ----
+# ccraft_data/ and AMASS/ are expected to exist beside the code (a real directory, or a
+# symlink to wherever you unpacked them). Only the small evaluation grid is tracked.
+/AMASS
+/ccraft_data/*
+!/ccraft_data/aux_data/
+/ccraft_data/aux_data/*
+!/ccraft_data/aux_data/evaluation_sequences/
+
+# ---- run outputs ----
+/output_code_validation/
+/outputs/
+/wandb/
+*.pkl
+!/ccraft_data/aux_data/evaluation_sequences/**/*.pkl
+*.pth
+*.mp4
+*.png
+!/static/**
+
+# ---- build and editor artefacts ----
+__pycache__/
+*.py[cod]
+*.so
+*.o
+*.egg-info/
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
+
+# per-machine tool shims
+/.localbin

@@ -1,0 +1,177 @@
+# ================================================================================================
+# The full Modular Contact Operator on the HOOD backbone.
+#
+# The operator settings are those of the ContourCraft shipped arm
+# (contourcraft_armBO_v21aTC_itmw_b0cap_ev2_walkfast.yaml): all four stages active, same
+# lambda_n source, same traversal, same wave and same strain cap. What differs is the predictor --
+# the released HOOD checkpoint and its model/runner blocks.
+#
+# The operator runs at INFERENCE on a frozen predictor: nothing here trains, and no gradient
+# flows through it. Set the friction coefficient on the command line with
+#   runner.ccraft.material.friction_mu_override=<mu>   (equivalently the --mu flag of the
+# inference / evaluation entry points); the `mu` key below is only a fallback.
+#
+# Normal load: lambda_n comes from force balance over gravity and inertia (lambda_n_source:
+# force_balance), in Newtons, so it is independent of the cloth's density parametrisation.
+# ================================================================================================
+experiment:
+  name: hood-v1-armBO-v21aTC-itmw-b0cap-ev2-walkfast
+  save_checkpoint_every: 2000
+  n_epochs: 20000000
+
+runner:
+  postcvpr:
+    warmup_steps: 100            # optimizer knob. NOT the operator gate -- see bolt_on.warmup_steps
+    push_eps: 2e-3
+    initial_ts: 3.333333333333333e-1
+    regular_ts: 3.333333333333333e-2
+    grad_clip: 1.
+    material:
+      lame_mu_min: 15909
+      lame_mu_max: 63636
+      lame_lambda_min: 3535.414406069427
+      lame_lambda_max: 93333.73508005822
+      bending_coeff_min: 6.370782056371576e-08
+      bending_coeff_max: 0.0013139737991266374
+      density_min: 4.34e-2
+      density_max: 7e-1
+      friction_mu_override: null  # set via evaluate.py --mu; WINS over bolt_on.mu below
+    # --- bolt-on operator: force-balance lambda_n, gravity+inertia ONLY (no elastic channel) ---
+    contact_arm:
+      mode: bolt_on             # none | bolt_on  (none => byte-identical baseline)
+      bolt_on:
+        # ⚠️ eps is a CHECKPOINT property, not a free constant: the checkpoint's training
+        # collision_penalty.eps + 1 mm. HOOD's postcvpr.pth trained at
+        # collision_penalty.eps = 2e-3 (HOOD/configs/postcvpr.yaml, and the same value is
+        #    embedded in all four mu checkpoints) => 3e-3 here.
+        #    This EQUALS MetricSuiteConfig's default r_c, so this arm needs NO `r_c` override in its
+        #    fmetrics manifest. DO NOT copy 4e-3 from contourcraft_armBO_v21aTC_pretrained.yaml --
+        #    that value belongs to contourcraft.pth (trained at 3e-3) and scoring an arm at the
+        # wrong band does not fail loudly, it manufactures a believable failure.
+        eps: 3e-3
+        stiffness: 100.0        # IGNORED when lambda_n_source=force_balance (kept for easy revert)
+        eps_v: 2e-3             # static-velocity band = IPC's rule 1e-3*l at the MEASURED scene
+                                # scale l = 2.01 m. Enters as eps_v*h, so any
+                                #   change to regular_ts silently rescales it.
+                                #   == the stick/slip measurement threshold
+                                #   eps_stick, so the operator and the metrics share one
+                                #   symbol with one value.
+        mu: 0.5                 # fallback only; material.friction_mu_override / --mu wins
+        z_axis: 1               # up-axis (Y-up = 1)
+        log_every: 50
+        lambda_n_source: force_balance
+        fb_use_gravity: true
+        fb_use_inertia: true
+        fb_use_elastic: false             # NO elastic channel. Density-invariant, real
+                                          #   Newtons. The seven fb_elastic_* mitigation flags are
+                                          #   deliberately ABSENT -- they exist only to tame this
+                                          #   channel, and runners/postcvpr.py REFUSES to run with
+                                          #   fb_use_elastic=true (it cannot compute elastic_grad).
+        warmup_steps: 0                   # no LBS-transient blindfold: the transient reached
+                                          #   lambda_n through the elastic channel, which is off.
+                                          #   => the operator is ON from rollout step 0 => t0 = 2,
+                                          #   matching gnn / ccraftpre / ppf / ccraft_hoodfric.
+        fb_g: 9.81
+        # --- -TC: normal completion, PRESERVE + Signorini clamp ---
+        normal_exact: preserve_clamp
+        normal_exact_iters: 2
+        normal_exact_slack: 1e-4
+        normal_exact_max_step: 0.0
+        normal_exact_dust: 1e-8
+        normal_exact_ambig_k: 4
+        normal_exact_ambig_cos: 0.0
+        normal_exact_ambig_ratio: 1.5
+        normal_exact_control: false
+        # --- TRIANGLE-WALK traversal (parameter-free path constructor) ------------------
+        # Replaces the S-substep surface march with a triangle walk on the body mesh
+        # (SplattingAvatar-lineage walking scheme; ISOMETRIC hinge-unfold transport — their
+        # Algorithm 1 re-expression is deliberately non-isometric and is NOT what runs here).
+        # The crossed faces ARE the segments: no substep count exists, so `path_substeps` is
+        # deliberately ABSENT (an unreachable key is a fake_icontour-class dead key; the code
+        # refuses a non-default path_walk_max_cross on any other path for the same reason).
+        # Landing / completion / fallback / wave seat are the SAME code as 'surface' (S7), so
+        # this file vs the ship config is a single-knob path-constructor swap.
+        tangential_path: walk
+        path_walk_max_cross: 16        # SAFETY cap on edge crossings per pair (hops class,
+                                       #   never-binds by gate G4; exceed => per-vertex chord
+                                       #   fallback, counted wk_fb_cross). NOT a resolution knob.
+        path_walk_fast: true           # SCHEDULING ONLY: merged seating + CUDA-graph
+                                       #   replay of both walk loops. Output is BITWISE the
+                                       #   default walk's -- this is a cost arm, not a physics arm.
+                                       #   Declines to the eager loop whenever capture is
+                                       #   unavailable (autograd live, batch past the largest
+                                       #   bucket, graph truncated), so it can never change a
+                                       #   result, only a runtime.
+        path_arc_cone: 'on'            # KEPT verbatim from the ship arm: arc-native Coulomb cone
+                                       #   (removes exactly b of TRUE slide along the walked arc)
+        path_arc_cap: 3.0              # KEPT verbatim: revert to the chord result when the
+                                       #   walked arc > 3x chord (same guard, same floor)
+        # --- multi-normal walk-back (segment-frame Coulomb landing) ---
+        path_normals: multi
+        path_capstan: 'off'
+
+        # --- membrane wave + strain cap: the incremental tangent-membrane WAVE.
+        # The material-transport ALTERNATIVE to the diagnostic patch solve and C0 spreading (all
+        # three are couplings of the SAME correction field; mutually exclusive, enforced in
+        # code). The Coulomb tangential landing c_T = cloth_next_tang - cloth_next is carried
+        # through non-contact cloth as a beta=0 mass-lumped membrane wave over exactly one
+        # frame; resolved contacts and pins are zero-Dirichlet boundaries and keep their
+        # complete Coulomb result.
+        #   * ZERO reach hyperparameters: reach = material wave speed x h, substeps certified
+        #     per frame (Gershgorin, 0.8 safety), bucket-laddered into one CUDA graph.
+        #   * mu=0 => c_T all-dust => STRUCTURAL no-op (free exact twin, as C0/C1).
+        wave_enabled: true
+        # 0.2 is a Provot-lineage fabric strain budget -- not a reach law and not a tuned gain. It
+        # removes the source-adjacent short-edge kick tail at byte-identical mid/far payload
+        # and the outcome plateau is MEASURED over [0.05, 0.4], 8 arms.
+        # ⚠️ Its ORIGIN, "0.2 = the backbone's own p95 edge-strain regime", IS MESH-SPECIFIC and
+        # must not be quoted: on the paper's four garments p95 is 0.072-0.127, so the cap sits
+        # 1.6-2.3x above it. The measured plateau is what survives across meshes -- quote that.
+        # Endpoint split is inverse-mass.
+        wave_strain_cap: 0.2
+
+dataloaders:
+  inference:
+    num_workers: 0
+    batch_size: 1
+    dataset:
+      ccraft:                                   # <- NOT `postcvpr`; see the warning above
+        data_root: ''
+        body_model_root: 'body_models'
+        sequence_loader: 'hood_pkl'
+        garment_dicts_dir: 'garment_dicts/smpl' # <- the 2-pin tshirt
+        obstacle_dict_file: 'smpl_aux.pkl'
+        split_path: 'datasplits/train.csv'
+        pinned_verts: True
+        random_betas: False
+        n_coarse_levels: 4
+        separate_arms: True
+        wholeseq: True
+        noise_scale: 0
+
+criterions:
+  ccraft:
+    postcvpr.mataug.stretching_energy:
+    postcvpr.inertia:
+    postcvpr.gravitational_energy:
+      z_axis: 1
+    postcvpr.collision_penalty:
+      weight_start: 5e+3
+      weight_max: 5e+5
+      eps: 2e-3
+      start_rampup_iteration: 50000
+      n_rampup_iterations: 100000
+    postcvpr.mataug.bending_energy:
+    postcvpr.friction_energy:
+      mu: 0.5
+      friction_radius: 3e-3
+
+model:
+  postcvpr:
+    core_model: 'postcvpr'
+    architecture: "f,c0|f,c0|f,c0|d:c0,c1|c0,c1|c0,c1|d:c1|c1|c1|u:c0,c1|c0,c1|c0,c1|u:f,c0|f,c0|f,c0"
+    collision_radius: 3e-2
+    k_world_edges: 1
+    n_coarse_levels: 3
+
+device: 'cuda:0'

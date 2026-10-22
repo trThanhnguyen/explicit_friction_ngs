@@ -1,0 +1,205 @@
+# ================================================================================================
+# Ablation rung 3 -- Coulomb correction + traversal + friction-induced motion propagation.
+#
+# Adds to rung 2 the propagation stage:
+#   wave_enabled: true         the correction applied at contact vertices is carried into the rest
+#                              of the garment as a linearized membrane wave, so a stuck patch drags
+#                              the fabric around it instead of shearing away from it.
+#   wave_strain_cap: 0.0       propagation is UNLIMITED here -- the strain-limiting stage is off,
+#                              which is exactly what separates this rung from the full operator.
+#
+# Backbone: the frictionless-retrained ContourCraft checkpoint.
+#
+# The operator runs at INFERENCE on a frozen predictor: nothing here trains, and no gradient
+# flows through it. Set the friction coefficient on the command line with
+#   runner.ccraft.material.friction_mu_override=<mu>   (equivalently the --mu flag of the
+# inference / evaluation entry points); the `mu` key below is only a fallback.
+#
+# Normal load: lambda_n comes from force balance over gravity and inertia (lambda_n_source:
+# force_balance), in Newtons, so it is independent of the cloth's density parametrisation.
+# ================================================================================================
+experiment:
+  name: contourcraft-armBO-v21aTC-itmw-b0-ev2-walkfast
+  save_checkpoint_every: 2000
+  n_epochs: 20000000
+
+
+runner:
+  ccraft:
+    warmup_steps: 100
+    increase_roll_every: 5000
+    roll_max: 20
+    push_eps: 2e-3
+    initial_ts: 3.333333333333333e-1
+    regular_ts: 3.333333333333333e-2
+    grad_clip: 1.
+    nocollect_after: 2
+    no_world_edges_every: 2
+    fake_icontour: False
+    optimizer:
+      lr: 2e-3
+      decay_steps: 50_000
+      decay_rate: 5e-1
+    material:
+      lame_mu_min: 15909
+      lame_mu_max: 63636
+      lame_lambda_min: 3535.414406069427
+      lame_lambda_max: 93333.73508005822
+      bending_coeff_min: 6.370782056371576e-08
+      bending_coeff_max: 0.0013139737991266374
+      density_min: 4.34e-2
+      density_max: 7e-1
+      friction_mu_override: null  # set via CLI: runner.ccraft.material.friction_mu_override=0.6
+    safecheck:
+      max_riz_size: 30
+      n_rest2pos_steps: 10
+      max_impulse_norm: 5e-2
+      max_ncoll: 2000
+      riz_epsilon: 0
+    # --- bolt-on operator: force-balance λ_n, gravity+inertia ONLY (no elastic channel) ---
+    contact_arm:
+      mode: bolt_on             # none | bolt_on | trained  (none => byte-identical baseline)
+      bolt_on:
+        eps: 3e-3               # CHECKPOINT property: trained-through endpoint trained at collision eps 2e-3, +1mm.
+                                # NOT the released model's 4e-3 (contourcraft.pth's number).
+        stiffness: 100.0        # IGNORED when lambda_n_source=force_balance (kept for easy revert)
+        eps_v: 2e-3             # static-velocity band = IPC's rule 1e-3*l at the MEASURED scene
+                                # scale l = 2.01 m. Enters as eps_v*h, so any
+                                #   change to regular_ts silently rescales it.
+                                #   == the stick/slip measurement threshold
+                                #   eps_stick, so the operator and the metrics share one
+                                #   symbol with one value.
+        mu: 0.5                 # fallback only; runner.ccraft.material.friction_mu_override / --mu wins
+        z_axis: 1               # up-axis (Y-up=1)
+        log_every: 50
+        lambda_n_source: force_balance
+        fb_use_gravity: true
+        fb_use_inertia: true
+        fb_use_elastic: false             # NO elastic channel. Density-invariant, real Newtons.
+                                          #   The seven fb_elastic_* mitigation flags are deliberately
+                                          #   ABSENT -- they exist only to tame this channel.
+        warmup_steps: 0                   # needs no LBS-transient blindfold: the transient
+                                          #   reached λ_n through the elastic channel, which is off.
+        fb_g: 9.81
+        # --- -TC: normal completion, PRESERVE + Signorini clamp (-TC) ---
+        normal_exact: preserve_clamp
+        normal_exact_iters: 2
+        normal_exact_slack: 1e-4
+        normal_exact_max_step: 0.0
+        normal_exact_dust: 1e-8
+        normal_exact_ambig_k: 4
+        normal_exact_ambig_cos: 0.0
+        normal_exact_ambig_ratio: 1.5
+        normal_exact_control: false
+        # --- TRIANGLE-WALK traversal (parameter-free path constructor) ------------------
+        # Replaces the S-substep surface march with a triangle walk on the body mesh
+        # (SplattingAvatar-lineage walking scheme; ISOMETRIC hinge-unfold transport — their
+        # Algorithm 1 re-expression is deliberately non-isometric and is NOT what runs here).
+        # The crossed faces ARE the segments: no substep count exists, so `path_substeps` is
+        # deliberately ABSENT (an unreachable key is a fake_icontour-class dead key; the code
+        # refuses a non-default path_walk_max_cross on any other path for the same reason).
+        # Landing / completion / fallback / wave seat are the SAME code as 'surface' (S7), so
+        # this file vs the ship config is a single-knob path-constructor swap.
+        tangential_path: walk
+        path_walk_max_cross: 16        # SAFETY cap on edge crossings per pair (hops class,
+                                       #   never-binds by gate G4; exceed => per-vertex chord
+                                       #   fallback, counted wk_fb_cross). NOT a resolution knob.
+        path_walk_fast: true           # SCHEDULING ONLY: merged seating + CUDA-graph
+                                       #   replay of both walk loops. Output is BITWISE the
+                                       #   default walk's -- this is a cost arm, not a physics arm.
+                                       #   Declines to the eager loop whenever capture is
+                                       #   unavailable (autograd live, batch past the largest
+                                       #   bucket, graph truncated), so it can never change a
+                                       #   result, only a runtime.
+        path_arc_cone: 'on'            # KEPT verbatim from the ship arm: arc-native Coulomb cone
+                                       #   (removes exactly b of TRUE slide along the walked arc)
+        path_arc_cap: 3.0              # KEPT verbatim: revert to the chord result when the
+                                       #   walked arc > 3x chord (same guard, same floor)
+        # --- multi-normal walk-back (segment-frame Coulomb landing) ---
+        # Per-segment lambda re-projection of the exact grav+inertia drive. In THIS arm the elastic
+        # channel is off, so the frozen primary-frame elastic scalar is exactly zero and the
+        # per-segment load is the pure re-projection clamp(G_gi·n_k, 0). Requires
+        # surface + arc_cone 'on' + force_balance + mollifier off (validated).
+        path_normals: multi
+        path_capstan: 'off'          # junction wrap surcharge e^{mu*sum(dtheta)} (belt/capstan);
+                                   #   'off' = per-segment loads only (isolation arm)
+
+        # --- membrane wave: incremental tangent-membrane WAVE, beta = 0 ---
+        # Derived from configs/contourcraft_armBO_v21aTC.yaml by exactly TWO changes: the
+        # experiment name + this block. The wave is the material-transport ALTERNATIVE to the
+        # diagnostic patch solve (mutually exclusive with patch_iters/spread_w, enforced in code):
+        # the Coulomb tangential landing c_T = cloth_next_tang - cloth_next is carried through
+        # non-contact cloth as a conservative mass-lumped membrane wave over exactly one frame.
+        #   * ZERO physical hyperparameters: no depth d, no per-hop gamma, no iteration K.
+        #     Reach = material wave speed x h; substeps certified per frame (Gershgorin, 0.8
+        #     safety) and bucket-laddered into one CUDA graph per garment (utils/itmw_wave.py).
+        #   * Resolved contacts + pins are zero-Dirichlet boundaries and keep their complete
+        #     Coulomb result (contact owns contact; material owns non-contact transport).
+        #   * mu=0 => c_T all-dust => A empty => STRUCTURAL no-op (free twin, same argument
+        #     as C0/C1). Same non-worsening Signorini guard as C1, counted under wv_sig_*.
+        # * Carrier certified: A1R + the A2C-lean kill screen (cp/cs speeds,
+        # normal-null, superposition, GPU parity). Absorption stays an
+        # — nothing here damps.
+        wave_enabled: true
+        # --- strain cap (owner-approved 2026-08-16): per-edge strain budget on the wave's composed
+        # output, Derived from contourcraft_armBO_v21aTC_itmw_b0.yaml by
+        # exactly TWO changes: the experiment name + this one key. The beta=0 carrier is kept
+        # UNTOUCHED (conservative, endpoint readout); the screen (an internal tool)
+        # shows the book failure lives in ~1% of edges (source-adjacent, shortest) and that a
+        # 0.2 strain cap removes it (peak 2.01 -> 0.276) at byte-identical mid/far payload.
+        # 0.2 is a Provot-lineage physical fabric budget, not a reach law and not a tuned gain.
+        # ⚠️ Its ORIGIN IS MESH-SPECIFIC and must not be quoted as stated: "0.2 = the backbone's own
+        # p95 edge-strain regime" is exact on the internal membrane wave book
+        # mesh, whose p95 is 0.19-0.20, and FALSE on the paper's own four garments, where p95 is
+        # 0.072-0.127 and the cap is 1.6-2.3x it (measured on all four backbones; ppf's
+        # own p95 is 0.094, so 0.2 sits above the physics reference's normal deformation too).
+        # The claim that survives on BOTH meshes -- and the one the paper makes -- is the MEASURED
+        # outcome plateau over [0.05, 0.4], 8x wide, containing both calibration readings.
+        wave_strain_cap: 0.0
+                                # UNCAPPED: the motivating failure arm (0 = branch off)
+
+dataloaders:
+  inference:
+    num_workers: 0
+    batch_size: 1
+    dataset:
+      ccraft:
+        data_root: ''
+        body_model_root: 'body_models'
+        sequence_loader: 'cmu_npz_smpl'
+        garment_dicts_dir: 'garment_dicts'
+        obstacle_dict_file: 'smpl_aux.pkl'
+        split_path: 'datasplits/train_ccraft.csv'
+        pinned_verts: True
+        random_betas: False
+        n_coarse_levels: 4
+        separate_arms: True
+        wholeseq: True
+        noise_scale: 0
+
+criterions:
+  ccraft:
+    postcvpr.mataug.stretching_energy:
+    postcvpr.inertia:
+    postcvpr.gravitational_energy:
+      z_axis: 1
+    postcvpr.collision_penalty:
+      weight_start: 5e+3
+      weight_max: 5e+5
+      eps: 2e-3
+      start_rampup_iteration: 50000
+      n_rampup_iterations: 100000
+    postcvpr.mataug.bending_energy:
+    postcvpr.friction_energy:
+      mu: 0.5
+      friction_radius: 3e-3
+
+model:
+  ccraft:
+    core_model: 'ccraft'
+    architecture: "f,c3|f,c3|f,c3|f,c3|f,c3|f,c3|f,c3|f,c3|f,c3|f,c3|f,c3|f,c3|f,c3|f,c3|f,c3"
+    collision_radius: 3e-2
+    body_collision_radius: 3e-2
+    n_coarse_levels: 4
+
+device: 'cuda:0'

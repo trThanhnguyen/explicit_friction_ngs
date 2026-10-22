@@ -1,0 +1,89 @@
+{
+  "tol_m": 0.0001,
+  "reports": [
+    {
+      "seq": "136_12",
+      "T_ppf": 327,
+      "T_built": 327,
+      "pre_offset_m": [
+        -0.0,
+        0.23348,
+        0.185686
+      ],
+      "pre_offset_constancy_std_m": 1.7311392665609122e-08,
+      "pre_resid_max_m": 0.2334800362586975,
+      "post_resid_max_m": 5.960464477539062e-07,
+      "status": "PASS"
+    },
+    {
+      "seq": "133_02",
+      "T_ppf": 359,
+      "T_built": 359,
+      "pre_offset_m": [
+        0.0,
+        0.23577,
+        0.186491
+      ],
+      "pre_offset_constancy_std_m": 4.432318870929866e-08,
+      "pre_resid_max_m": 0.23577016592025757,
+      "post_resid_max_m": 5.960464477539062e-07,
+      "status": "PASS"
+    },
+    {
+      "seq": "79_04",
+      "T_ppf": 455,
+      "T_built": 455,
+      "pre_offset_m": [
+        -0.0,
+        0.251895,
+        0.2008
+      ],
+      "pre_offset_constancy_std_m": 2.9387909804589058e-08,
+      "pre_resid_max_m": 0.251895546913147,
+      "post_resid_max_m": 7.152557373046875e-07,
+      "status": "PASS"
+    },
+    {
+      "seq": "127_02",
+      "T_ppf": 440,
+      "T_built": 440,
+      "pre_offset_m": [
+        -0.0,
+        0.237187,
+        0.191591
+      ],
+      "pre_offset_constancy_std_m": 2.0859436231402054e-08,
+      "pre_resid_max_m": 0.23718774318695068,
+      "post_resid_max_m": 6.556510925292969e-07,
+      "status": "PASS"
+    },
+    {
+      "seq": "143_27",
+      "T_ppf": 352,
+      "T_built": 352,
+      "pre_offset_m": [
+        -0.0,
+        0.234278,
+        0.192907
+      ],
+      "pre_offset_constancy_std_m": 1.7124172913171087e-08,
+      "pre_resid_max_m": 0.23427820205688477,
+      "post_resid_max_m": 5.960464477539062e-07,
+      "status": "PASS"
+    },
+    {
+      "seq": "104_54 (Set-A canary)",
+      "T_ppf": 63,
+      "T_built": 63,
+      "pre_offset_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "pre_offset_constancy_std_m": 0.0,
+      "pre_resid_max_m": 0.0,
+      "post_resid_max_m": 0.0,
+      "status": "PASS"
+    }
+  ]
+}

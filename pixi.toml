@@ -1,0 +1,64 @@
+[workspace]
+name = "contourcraft"
+# Removed 'rapidsai' from channels to stop the solver from fighting with it
+channels = ["rapidsai", "pytorch", "nvidia", "conda-forge"]
+platforms = ["linux-64"]
+
+[activation.env]
+CUDA_HOME = "/usr/local/cuda-12.9"
+PATH = "/usr/local/cuda-12.9/bin:/usr/bin:$PATH"
+LD_LIBRARY_PATH = "/usr/local/cuda-12.9/lib64:$LD_LIBRARY_PATH"
+# numba-cuda 0.0.17.1's ctypes-based driver bindings segfault in cuCtxGetDevice_v2 on this
+# driver (580.159.03) the first time cudf/cugraph hand a GPU buffer to numba (e.g. DataFrame
+# repr, cugraph's from_cudf_edgelist/connected_components in utils/icontour.py). Forcing the
+# official cuda-python driver bindings avoids that path entirely. See _logs/2026-07-05b_fix_eval_time_bug.md.
+NUMBA_CUDA_USE_NVIDIA_BINDING = "1"
+
+[dependencies]
+python = "3.10.*"
+pytorch = "2.5.1.*"
+torchvision = "0.20.1.*"
+torchaudio = "2.5.1.*"
+pytorch-cuda = "12.4.*"
+cudf = "24.12.*"
+cugraph = "24.12.*"
+einops = ">=0.8.2,<0.9"
+pip = "24.3.1.*"
+munch = ">=4.0.0,<5"
+networkx = ">=3.4.2,<4"
+omegaconf = ">=2.3.0,<3"
+pandas = ">=2.2.3,<3"
+pillow = ">=9.4.0"
+scikit-learn = ">=1.7.2,<2"
+tqdm = ">=4.67.3,<5"
+yaml = ">=0.2.5,<0.3"
+iopath = ">=0.1.10,<0.2"
+wandb = ">=0.25.1,<0.26"
+ipykernel = ">=7.2.0,<8"
+nvtop = ">=3.3.2,<4"
+
+[pypi-dependencies]
+ffmpeg-python = ">=0.2.0, <0.3"
+huepy = ">=1.2.1, <2"
+pyrender = ">=0.1.45, <0.2"
+PyOpenGL = ">=3.1.0, <4"
+imageio-ffmpeg = ">=0.5.0, <0.6"
+
+# ── Explicitly pip-installed (tracked here for reproducibility) ────────────────
+# Special-source packages (PyG wheel index, git, local) are NOT listed here;
+# they are handled by install_extra.sh.
+# aitviewer = "==1.13.0"
+# chumpy = "==0.70"
+# loguru = "==0.7.3"
+# matplotlib = "==3.10.8"
+# moderngl-window = "==2.4.6"          # pinned: required for aitviewer Qt fix
+numpy = "==1.26.4"
+# scikit-image = "==0.25.2"
+smplx = "==0.1.28"
+torch-geometric = "==2.4.0"
+trimesh = "==3.23.5"
+matplotlib = "==3.10.8"
+# warp-lang = "==1.12.1"
+# docling = "==2.90.0"                 # document processing (unrelated to simulation)
+
+[tasks]
