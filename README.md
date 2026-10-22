@@ -1,5 +1,7 @@
 # Explicit Frictional Contact Modeling in Neural Garment Simulation
 
+**WACV 2027** · [Project page](https://trthanhnguyen.github.io/explicit-friction-ngs/)
+
 Reference implementation of the Modular Contact Operator: a friction layer that attaches to a
 **frozen** neural garment predictor at inference. It estimates the normal load, applies a
 closed-form Coulomb correction along a path across body triangles, and propagates the induced
@@ -234,7 +236,7 @@ The paper appears at WACV 2027. Until the proceedings are published, cite it as 
 }
 ```
 
-Paper and supplementary material: **`<PAPER LINK - TBD>`**
+Project page: <https://trthanhnguyen.github.io/explicit-friction-ngs/>
 
 Drop the `note` field once the proceedings are out and the page range is available. Please also
 cite ContourCraft and HOOD, as below.
