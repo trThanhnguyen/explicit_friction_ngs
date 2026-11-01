@@ -1,6 +1,6 @@
 # Explicit Frictional Contact Modeling in Neural Garment Simulation
 
-**WACV 2027** · [Project page](https://trthanhnguyen.github.io/explicit-friction-ngs/)
+**WACV 2027** · [Project page](https://trthanhnguyen.github.io/explicit-friction-ngs/) · [arXiv](https://arxiv.org/abs/2610.33492)
 
 Reference implementation of the Modular Contact Operator: a friction layer that attaches to a
 **frozen** neural garment predictor at inference. It estimates the normal load, applies a
@@ -223,16 +223,20 @@ time**, so a module with no static importer is not unused.
 
 ## Citation
 
-The paper appears at WACV 2027. Until the proceedings are published, cite it as to-appear:
+The paper appears at WACV 2027 and is on arXiv as
+[2610.33492](https://arxiv.org/abs/2610.33492). Until the proceedings are published, cite it as:
 
 ```bibtex
 @inproceedings{truong2027explicit,
-  title     = {Explicit Frictional Contact Modeling in Neural Garment Simulation},
-  author    = {Truong, Thanh-Nguyen and Tran, Vu-Hoang and Huang, Ching-Chun},
-  booktitle = {Proceedings of the IEEE/CVF Winter Conference on
-               Applications of Computer Vision (WACV)},
-  year      = {2027},
-  note      = {To appear}
+  title         = {Explicit Frictional Contact Modeling in Neural Garment Simulation},
+  author        = {Truong, Thanh-Nguyen and Tran, Vu-Hoang and Huang, Ching-Chun},
+  booktitle     = {Proceedings of the IEEE/CVF Winter Conference on
+                   Applications of Computer Vision (WACV)},
+  year          = {2027},
+  note          = {To appear},
+  eprint        = {2610.33492},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CV}
 }
 ```
 
