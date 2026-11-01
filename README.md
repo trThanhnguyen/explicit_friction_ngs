@@ -233,7 +233,6 @@ The paper appears at WACV 2027 and is on arXiv as
   booktitle     = {Proceedings of the IEEE/CVF Winter Conference on
                    Applications of Computer Vision (WACV)},
   year          = {2027},
-  note          = {To appear},
   eprint        = {2610.33492},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CV}
